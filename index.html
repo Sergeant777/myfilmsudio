@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KINETIC FRAME | Pro Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;700;900&display=swap');
+        
+        :root { --kf-orange: #f97316; --kf-bg: #020617; --kf-slate: #0f172a; }
+        
+        body { background-color: var(--kf-bg); color: white; font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; height: 100vh; touch-action: none; -webkit-user-select: none; user-select: none; }
+        .font-comic { font-family: 'Bangers', cursive; letter-spacing: 0.05em; }
+        
+        /* Navigation */
+        .page-section { display: none; height: calc(100vh - 75px); overflow-y: auto; }
+        .page-section.active { display: flex; flex-direction: column; animation: fadeIn 0.2s ease-out; }
+        #page-studio.active { overflow: hidden; height: 100vh; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* The Stage */
+        #viewport { position: relative; background-color: #1e293b; width: 100%; height: 100%; overflow: hidden; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; touch-action: none; }
+        #playback-overlay { position: absolute; inset: 0; z-index: 200; background: #000; display: none; align-items: center; justify-content: center; }
+        #playback-img { width: 100%; height: 100%; object-fit: contain; }
+
+        /* Actors & Bubbles */
+        .movable { position: absolute; cursor: move; z-index: 40; touch-action: none; transform-origin: center center; display: flex; align-items: center; justify-content: center; }
+        .movable.selected { outline: 4px dashed var(--kf-orange); outline-offset: 8px; border-radius: 12px; z-index: 100; }
+        .movable img { pointer-events: none; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.5)); max-width: 320px; max-height: 450px; }
+
+        .bubble-box { background: white; border: 4px solid black; border-radius: 24px; padding: 15px 25px; color: black; font-family: 'Bangers', cursive; font-size: 1.8rem; text-align: center; text-transform: uppercase; min-width: 80px; box-shadow: 10px 10px 0px rgba(0,0,0,0.3); position: relative; pointer-events: none; }
+        .bubble-box::after { content: ''; position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); border-width: 20px 15px 0; border-style: solid; border-color: black transparent transparent; }
+
+        /* UI Elements */
+        #mobile-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 75px; background: #000; display: flex; justify-content: space-around; align-items: center; border-top: 2px solid #1e293b; z-index: 500; padding-bottom: env(safe-area-inset-bottom); }
+        .nav-link { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #475569; transition: color 0.2s; }
+        .nav-link.active { color: var(--kf-orange); }
+
+        input[type="range"] { accent-color: var(--kf-orange); height: 12px; border-radius: 6px; background: #1e293b; -webkit-appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 32px; height: 32px; background: var(--kf-orange); border-radius: 50%; border: 3px solid white; cursor: pointer; }
+
+        .mission-card { display: none; width: 100%; max-width: 400px; background: #0f172a; border-radius: 50px; padding: 40px; border: 4px solid var(--kf-orange); text-align: center; margin: 0 auto; box-shadow: 0 0 50px rgba(249,115,22,0.2); }
+        .mission-card.active-tier { display: flex; flex-direction: column; }
+        
+        .frame-thumb { width: 110px; height: 140px; flex-shrink: 0; border: 2px solid #1e293b; border-radius: 16px; overflow: hidden; position: relative; background: #000; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        
+        @media (min-width: 1024px) { #page-studio { flex-direction: row !important; } #studio-controls { width: 450px; height: 100% !important; border-left: 2px solid var(--kf-orange); } #studio-viewport-container { flex: 1; } }
+    </style>
+</head>
+<body onload="init()">
+    
+    <!-- MESSAGES -->
+    <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 bg-orange-500 text-white px-8 py-4 rounded-full font-black z-[1000] hidden shadow-2xl uppercase text-xs tracking-widest">Message</div>
+    
+    <!-- RESET MODAL -->
+    <div id="reset-modal" class="fixed inset-0 bg-black/90 z-[2000] hidden flex items-center justify-center p-6 backdrop-blur-sm">
+        <div class="bg-slate-900 border-4 border-red-500 rounded-[50px] p-10 max-w-sm w-full text-center">
+            <h3 class="text-3xl font-comic text-white uppercase mb-4 italic">Clear Movie?</h3>
+            <p class="text-slate-500 font-bold text-xs uppercase mb-8 leading-loose">This will delete all frames forever!</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="confirmReset()" class="w-full py-5 rounded-3xl bg-red-600 text-white font-black uppercase text-xs">Vaporize Project</button>
+                <button onclick="closeReset()" class="w-full py-5 rounded-3xl bg-slate-800 text-slate-400 font-black uppercase text-xs">Go Back</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-shell" class="pb-[75px]">
+        <!-- PAGE: HOME -->
+        <section id="page-home" class="page-section active items-center justify-center p-6 text-center">
+            <div class="w-24 h-24 bg-orange-500 rounded-[32px] flex items-center justify-center shadow-2xl mb-8 rotate-6 animate-pulse"><i data-lucide="zap" class="text-white w-12 h-12 fill-current"></i></div>
+            <h1 class="text-7xl md:text-9xl font-comic uppercase text-white mb-2 leading-none italic">KINETIC <span class="text-orange-500">FRAME</span></h1>
+            <p class="text-slate-400 uppercase tracking-[0.5em] text-xs mb-14 font-black italic">The Animation Studio</p>
+            <button onclick="navigateTo('studio')" class="px-16 py-6 bg-orange-500 rounded-full font-black uppercase text-2xl shadow-2xl active:scale-95 tracking-widest text-white">Launch Studio</button>
+        </section>
+
+        <!-- PAGE: MISSION -->
+        <section id="page-mission" class="page-section p-6 pt-12">
+            <div class="max-w-xl mx-auto space-y-12 pb-12">
+                <div class="text-center">
+                    <h2 class="text-6xl font-comic uppercase mb-2 text-white italic tracking-widest">The Mission</h2>
+                    <p id="rank-display" class="text-slate-500 text-[10px] font-black uppercase tracking-widest italic">Authorized Access Only</p>
+                </div>
+                
+                <div id="slide-t1" class="mission-card items-center gap-8">
+                    <div class="w-20 h-20 rounded-full border-4 border-emerald-500 flex items-center justify-center text-emerald-500 font-black text-2xl font-comic italic">1</div>
+                    <h4 class="font-black uppercase text-2xl text-white font-comic">BASIC PACK</h4>
+                    <p class="text-xs text-slate-400 uppercase font-bold italic tracking-widest leading-loose">Starter Folder Unlocked.</p>
+                    <a href="https://drive.google.com/drive/folders/1o1Bvk_xizi4su1H67Nt0kcYAkA3G9Ynj?usp=sharing" target="_blank" class="w-full bg-emerald-600 py-6 rounded-[30px] text-xs font-black uppercase shadow-xl text-white">Open BASIC Folder</a>
+                </div>
+
+                <div id="slide-t2" class="mission-card items-center gap-8">
+                    <div class="w-20 h-20 rounded-full border-4 border-orange-500 flex items-center justify-center text-orange-500 font-black text-2xl font-comic italic">2</div>
+                    <h4 class="font-black uppercase text-2xl text-orange-500 font-comic">EXTENDED PACK</h4>
+                    <p class="text-xs text-slate-300 uppercase font-bold italic tracking-widest leading-loose">Extended Hero Kits Unlocked.</p>
+                    <a href="https://drive.google.com/drive/folders/1KXZgw8xA38feXgsY4D8A2tArM_9dFlE0?usp=sharing" target="_blank" class="w-full bg-orange-600 py-6 rounded-[30px] text-xs font-black uppercase shadow-2xl font-bold text-white">Open EXTENDED Folder</a>
+                </div>
+
+                <div id="slide-t3" class="mission-card items-center gap-8">
+                    <div class="w-20 h-20 rounded-full border-4 border-cyan-500 flex items-center justify-center text-cyan-500 font-black text-2xl font-comic italic">3</div>
+                    <h4 class="font-black uppercase text-2xl text-cyan-400 font-comic">VIP MASTER PACK</h4>
+                    <p class="text-xs text-slate-400 uppercase font-bold italic tracking-widest leading-loose">Director Status: VIP Asset Vault Enabled.</p>
+                    <a href="https://drive.google.com/drive/folders/17VNSVmer_TgGu0hTs6SDN-jBbH1MxAeH?usp=sharing" target="_blank" class="w-full bg-cyan-600 py-6 rounded-[30px] text-xs font-black uppercase shadow-xl text-white">Open VIP Folder</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- PAGE: STUDIO -->
+        <section id="page-studio" class="page-section flex flex-col overflow-hidden">
+            <div id="studio-viewport-container" class="relative flex-1 bg-black overflow-hidden">
+                <div id="viewport" onpointerdown="handlePointerDown(event)">
+                    <div id="onion-skin" style="position: absolute; inset: 0; opacity: 0.25; pointer-events: none; background-size: cover; background-position: center; display: none;"></div>
+                    <div id="playback-overlay"><img id="playback-img" src=""></div>
+                    <div id="item-layer"></div>
+                    <div class="absolute top-6 left-6 bg-black/60 px-5 py-2 rounded-full border border-white/10 z-[60] font-black uppercase text-orange-500 text-[10px] tracking-widest italic"><span id="frame-count">0 Frames SNAP</span></div>
+                    
+                    <div class="absolute bottom-8 right-8 flex flex-col gap-5 z-[100]">
+                        <button id="play-btn" onclick="togglePlayback()" class="w-16 h-16 bg-emerald-500 rounded-full border-4 border-black shadow-xl flex items-center justify-center active:scale-90 transition-all"><i data-lucide="play" id="play-icon" class="text-white fill-current"></i></button>
+                        <button onclick="updateTransform('flip')" class="w-16 h-16 bg-blue-600 rounded-full border-4 border-black shadow-xl flex items-center justify-center active:scale-90 transition-all"><i data-lucide="flip-horizontal-2" class="text-white"></i></button>
+                        <button onclick="captureFrame()" class="w-24 h-24 bg-orange-500 rounded-full border-8 border-black shadow-2xl flex items-center justify-center active:scale-90 transition-all shadow-[0_0_40px_rgba(249,115,22,0.4)]"><i data-lucide="camera" class="w-12 h-12 text-white fill-current"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTROLS -->
+            <div id="studio-controls" class="bg-slate-900 p-8 border-t-2 border-orange-500 overflow-y-auto">
+                <div class="flex gap-8 mb-10 border-b border-white/5 pb-4">
+                    <button onclick="setTab('assets')" id="btn-tab-assets" class="text-sm font-black uppercase text-orange-500 border-b-2 border-orange-500 pb-2 tracking-widest italic">1. Add</button>
+                    <button onclick="setTab('adjust')" id="btn-tab-adjust" class="text-sm font-black uppercase text-slate-500 pb-2 tracking-widest italic">2. Adjust</button>
+                    <button onclick="setTab('film')" id="btn-tab-film" class="text-sm font-black uppercase text-slate-500 pb-2 tracking-widest italic">3. Film</button>
+                </div>
+
+                <div id="tab-assets" class="space-y-10 animate-in fade-in duration-300">
+                    <div>
+                        <h3 class="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest italic">Animation Reel</h3>
+                        <div class="flex gap-4 overflow-x-auto pb-4 scrollbar-hide" id="frame-reel-slides">
+                            <div class="w-full py-12 text-center border-2 border-dashed border-slate-800 rounded-3xl opacity-30 text-[10px] font-black uppercase">Snap to see frames</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <button onclick="triggerUpload('hero')" class="bg-slate-800 p-6 rounded-3xl text-xs font-black uppercase border border-slate-700 hover:border-orange-500 text-white">Character A</button>
+                        <button onclick="triggerUpload('charB')" id="btn-char-b" class="bg-slate-800 p-6 rounded-3xl text-xs font-black uppercase border border-slate-700 hover:border-orange-500 text-white">Character B</button>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex gap-2">
+                           <input type="text" id="bubble-input" placeholder="TYPE SPEECH HERE..." class="flex-1 bg-black border border-slate-700 rounded-2xl p-4 text-xs font-bold uppercase text-white focus:border-orange-500 outline-none">
+                           <button onclick="addSpeechBubble()" class="bg-orange-500 px-6 rounded-2xl font-black text-xl">+</button>
+                        </div>
+                        <button onclick="triggerUpload('bg')" class="w-full bg-slate-800 py-5 rounded-3xl text-[10px] font-black uppercase border border-slate-700 hover:border-orange-500 text-white">Set Background Image</button>
+                    </div>
+                </div>
+
+                <div id="tab-adjust" class="hidden space-y-12 py-4 animate-in slide-in-from-right duration-300">
+                    <div class="space-y-6">
+                        <div class="flex justify-between text-xs font-black uppercase text-slate-400"><span>Zoom / Size</span><span id="val-scale" class="text-orange-500 font-mono font-black text-2xl">1.0</span></div>
+                        <input type="range" id="slider-scale" min="0.1" max="4" step="0.1" value="1" oninput="updateTransform('scale', this.value)" class="w-full">
+                    </div>
+                    <div class="space-y-6">
+                        <div class="flex justify-between text-xs font-black uppercase text-slate-400"><span>Rotation</span><span id="val-rotate" class="text-orange-500 font-mono font-black text-2xl">0°</span></div>
+                        <input type="range" id="slider-rotate" min="-180" max="180" value="0" oninput="updateTransform('rotate', this.value)" class="w-full">
+                    </div>
+                    <button onclick="deleteSelected()" class="w-full bg-red-900/30 text-red-500 py-8 rounded-3xl text-xs font-black uppercase border border-red-900/50 flex items-center justify-center gap-3 italic">Delete Selected</button>
+                </div>
+
+                <div id="tab-film" class="hidden space-y-8 py-4 animate-in slide-in-from-right duration-300">
+                    <div class="space-y-4">
+                        <div class="flex justify-between text-xs font-black uppercase text-slate-400"><span>Speed (FPS)</span><span id="val-fps" class="text-orange-500 font-black text-2xl">4</span></div>
+                        <input type="range" min="1" max="12" value="4" oninput="document.getElementById('val-fps').innerText = this.value" id="fps-slider" class="w-full">
+                    </div>
+                    <button onclick="openReset()" class="w-full bg-red-900/20 text-red-500 p-8 rounded-3xl text-xs font-black uppercase border border-red-900/50">Reset Studio</button>
+                    <button onclick="downloadFrames()" id="btn-export" class="w-full bg-emerald-600 p-8 rounded-3xl text-sm font-black uppercase shadow-xl text-white font-comic italic tracking-widest italic">Export Frames (Director Only)</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- NAVIGATION -->
+    <nav id="mobile-nav">
+        <button onclick="navigateTo('home')" id="nav-home" class="nav-link active"><i data-lucide="home" class="w-7 h-7"></i><span class="text-[9px] font-bold uppercase tracking-widest">Home</span></button>
+        <button onclick="navigateTo('mission')" id="nav-mission" class="nav-link"><i data-lucide="rocket" class="w-7 h-7"></i><span class="text-[9px] font-bold uppercase tracking-widest">Mission</span></button>
+        <button onclick="navigateTo('studio')" id="nav-studio" class="nav-link"><i data-lucide="clapperboard" class="w-7 h-7"></i><span class="text-[9px] font-bold uppercase tracking-widest">Studio</span></button>
+        <a href="https://www.facebook.com/share/1JQh5fGJiB/" target="_blank" class="nav-link text-slate-600"><i data-lucide="facebook" class="w-7 h-7"></i><span class="text-[9px] font-bold uppercase italic tracking-tighter italic">Club</span></a>
+    </nav>
+    <input id="file-upload" type="file" class="hidden" accept="image/*" onchange="handleFileUpload(event)">
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        let userTier = parseInt(urlParams.get('tier')) || 1;
+        let selectedEl = null, activePointerId = null, dragOffset = {x:0,y:0}, frames = [], isPlaying = false, playInterval = null, zCounter = 100, currentSlot = '';
+
+        function init() { 
+            lucide.createIcons(); applyTierLimits();
+            window.addEventListener('pointermove', handleGlobalMove);
+            window.addEventListener('pointerup', handleGlobalUp);
+        }
+
+        function applyTierLimits() {
+            const ranks = ["Recruit", "Builder", "Director"];
+            document.getElementById('rank-display').innerText = `Authorized Rank: ${ranks[userTier-1]}`;
+            document.querySelectorAll('.mission-card').forEach(c => c.classList.remove('active-tier'));
+            const card = document.getElementById(`slide-t${userTier}`);
+            if(card) card.classList.add('active-tier');
+            if (userTier < 2) document.getElementById('btn-char-b').classList.add('tier-locked');
+            if (userTier < 3) document.getElementById('btn-export').classList.add('tier-locked');
+        }
+
+        function navigateTo(s) { 
+            document.querySelectorAll('.page-section').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.getElementById('page-'+s).classList.add('active'); 
+            document.getElementById('nav-'+s).classList.add('active');
+        }
+
+        function setTab(t) {
+            ['assets','adjust','film'].forEach(i => { 
+                document.getElementById('tab-'+i).classList.add('hidden'); 
+                document.getElementById('btn-tab-'+i).classList.remove('text-orange-500','border-b-2','border-orange-500'); 
+                document.getElementById('btn-tab-'+i).classList.add('text-slate-500'); 
+            });
+            document.getElementById('tab-'+t).classList.remove('hidden'); 
+            document.getElementById('btn-tab-'+t).classList.remove('text-slate-500'); 
+            document.getElementById('btn-tab-'+t).classList.add('text-orange-500','border-b-2','border-orange-500');
+        }
+
+        function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'), 3000); }
+
+        function triggerUpload(s) { if(s==='charB' && userTier < 2) return showToast("Rank 2 Needed!"); currentSlot = s; document.getElementById('file-upload').click(); }
+
+        function handleFileUpload(e) {
+            const f = e.target.files[0]; if(!f) return;
+            const r = new FileReader();
+            r.onload = (ev) => {
+                if (currentSlot === 'bg') document.getElementById('viewport').style.backgroundImage = `url(${ev.target.result})`;
+                else createMovableItem(`<img src="${ev.target.result}">`);
+                e.target.value = '';
+            };
+            r.readAsDataURL(f);
+        }
+
+        function createMovableItem(content) {
+            const el = document.createElement('div'); el.className = "movable"; 
+            el.dataset.scale = 1; el.dataset.rotate = 0; el.dataset.flip = 1; el.dataset.x = 0; el.dataset.y = 0;
+            el.innerHTML = content;
+            el.onpointerdown = (e) => { 
+                e.stopPropagation(); selectItem(el); zCounter++; el.style.zIndex = zCounter;
+                activePointerId = e.pointerId; 
+                const r = el.getBoundingClientRect();
+                dragOffset.x = e.clientX - r.left - (r.width/2); dragOffset.y = e.clientY - r.top - (r.height/2);
+                el.setPointerCapture(e.pointerId);
+            };
+            document.getElementById('viewport').appendChild(el); selectItem(el);
+        }
+
+        function selectItem(el) { 
+            if(selectedEl) selectedEl.classList.remove('selected'); selectedEl = el; selectedEl.classList.add('selected'); 
+            document.getElementById('slider-scale').value = el.dataset.scale || 1; document.getElementById('val-scale').innerText = el.dataset.scale || 1;
+            document.getElementById('slider-rotate').value = el.dataset.rotate || 0; document.getElementById('val-rotate').innerText = (el.dataset.rotate || 0) + '°';
+            setTab('adjust'); 
+        }
+
+        function updateTransform(type, val) {
+            if (!selectedEl) return showToast("Tap character first!");
+            if (type === 'scale') { selectedEl.dataset.scale = val; document.getElementById('val-scale').innerText = val; }
+            else if (type === 'rotate') { selectedEl.dataset.rotate = val; document.getElementById('val-rotate').innerText = val + '°'; }
+            else if (type === 'flip') { selectedEl.dataset.flip = (selectedEl.dataset.flip === "-1") ? "1" : "-1"; }
+            const s = selectedEl.dataset.scale || 1, r = selectedEl.dataset.rotate || 0, f = selectedEl.dataset.flip || 1;
+            selectedEl.style.transform = `translate(${selectedEl.dataset.x}px, ${selectedEl.dataset.y}px) scale(${s * f}, ${s}) rotate(${r}deg)`;
+        }
+
+        function handleGlobalMove(e) {
+            if (!selectedEl || activePointerId === null || e.pointerId !== activePointerId) return;
+            const v = document.getElementById('viewport').getBoundingClientRect();
+            selectedEl.dataset.x = e.clientX - v.left - (selectedEl.offsetWidth/2);
+            selectedEl.dataset.y = e.clientY - v.top - (selectedEl.offsetHeight/2);
+            const s = selectedEl.dataset.scale || 1, r = selectedEl.dataset.rotate || 0, f = selectedEl.dataset.flip || 1;
+            selectedEl.style.transform = `translate(${selectedEl.dataset.x}px, ${selectedEl.dataset.y}px) scale(${s * f}, ${s}) rotate(${r}deg)`;
+        }
+
+        function handleGlobalUp(e) { activePointerId = null; }
+        function handlePointerDown() { if(selectedEl) { selectedEl.classList.remove('selected'); selectedEl = null; } }
+
+        async function captureFrame() {
+            if (isPlaying) togglePlayback();
+            const v = document.getElementById('viewport'); const sel = selectedEl; if(sel) sel.classList.remove('selected');
+            const canvas = await html2canvas(v, { backgroundColor: null, scale: 1 }); const data = canvas.toDataURL("image/png"); frames.push(data);
+            if(sel) sel.classList.add('selected');
+            const skin = document.getElementById('onion-skin'); skin.style.backgroundImage = `url(${data})`; skin.style.display = 'block';
+            document.getElementById('frame-count').innerText = `${frames.length} SNAPS`; showToast("Snapped!");
+            updateFrameSlides();
+        }
+
+        function updateFrameSlides() {
+            const reel = document.getElementById('frame-reel-slides'); reel.innerHTML = '';
+            frames.forEach((f, i) => {
+                const s = document.createElement('div'); s.className = "frame-thumb";
+                s.innerHTML = `<img src="${f}" class="w-full h-full object-cover opacity-70"><div class="absolute bottom-1 right-2 text-[8px] font-black">${i+1}</div>`;
+                reel.appendChild(s);
+            });
+            reel.scrollLeft = reel.scrollWidth;
+        }
+
+        function togglePlayback() {
+            if (frames.length < 1) return showToast("Snap frames first!");
+            const over = document.getElementById('playback-overlay'), img = document.getElementById('playback-img'), icon = document.getElementById('play-icon');
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                over.style.display = 'flex'; icon.setAttribute('data-lucide', 'square');
+                let i = 0; playInterval = setInterval(() => { img.src = frames[i]; i = (i + 1) % frames.length; }, 1000 / document.getElementById('fps-slider').value);
+            } else { clearInterval(playInterval); over.style.display = 'none'; icon.setAttribute('data-lucide', 'play'); }
+            lucide.createIcons();
+        }
+
+        function addSpeechBubble() {
+            const input = document.getElementById('bubble-input');
+            const val = input.value.trim();
+            if(!val) return showToast("Type something first!");
+            createMovableItem(`<div class="bubble-box">${val}</div>`);
+            input.value = '';
+        }
+
+        function deleteSelected() { if(selectedEl) { selectedEl.remove(); selectedEl = null; showToast("Removed"); } }
+        function openReset() { document.getElementById('reset-modal').classList.remove('hidden'); }
+        function closeReset() { document.getElementById('reset-modal').classList.add('hidden'); }
+        function confirmReset() { location.reload(); }
+        function downloadFrames() { if(userTier < 3) return showToast("Director Export Needed!"); showToast("Exporting..."); frames.forEach((f,i) => { const a=document.createElement('a'); a.download=`frame_${i}.png`; a.href=f; a.click(); }); }
+    </script>
+</body>
+</html>
